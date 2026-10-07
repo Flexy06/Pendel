@@ -12,7 +12,9 @@ package de.flexy.pendel.core.analysis
  *  2 – movement-window trimming (indoor GPS noise at arrival), speed profile can overrule an
  *      activity-recognition hint (walks), plausibility check for altitude, place groups
  *      (e.g. Mensa counts as Uni for routes)
+ *  3 – a recording with a long stay in the middle (≥ 8 min within 150 m, travel on both sides)
+ *      is split into separate trips (ride to Uni + ride home recorded as one)
  */
 object AnalysisVersion {
-    const val CURRENT = 2
+    const val CURRENT = 3
 }

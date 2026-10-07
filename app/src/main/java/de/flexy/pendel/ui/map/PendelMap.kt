@@ -31,7 +31,6 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
-import org.maplibre.android.style.layers.HeatmapLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
@@ -188,23 +187,14 @@ private fun setupLayers(s: Style, dark: Boolean) {
     s.addSource(GeoJsonSource(SRC_MARKERS, FeatureCollection.fromFeatures(emptyList<Feature>())))
     s.addSource(GeoJsonSource(SRC_INTER, FeatureCollection.fromFeatures(emptyList<Feature>())))
 
-    val ramp = if (dark) WaitRamp.dark else WaitRamp.light
+    // Wait-time "heat": blurred circles instead of a MapLibre HeatmapLayer. The heatmap layer needs
+    // an offscreen half-float render target and crashed on some GPUs when switched on.
     s.addLayer(
-        HeatmapLayer(LAYER_HEAT, SRC_HEAT).withProperties(
-            PropertyFactory.heatmapWeight(Expression.get("w")),
-            PropertyFactory.heatmapRadius(
-                Expression.interpolate(Expression.linear(), Expression.zoom(), Expression.stop(11, 12f), Expression.stop(16, 40f)),
-            ),
-            PropertyFactory.heatmapOpacity(0.85f),
-            PropertyFactory.heatmapColor(
-                Expression.interpolate(
-                    Expression.linear(), Expression.heatmapDensity(),
-                    Expression.stop(0.0, Expression.rgba(0, 0, 0, 0)),
-                    Expression.stop(0.2, Expression.color(ramp[1].toArgb())),
-                    Expression.stop(0.5, Expression.color(ramp[3].toArgb())),
-                    Expression.stop(1.0, Expression.color(ramp[5].toArgb())),
-                ),
-            ),
+        CircleLayer(LAYER_HEAT, SRC_HEAT).withProperties(
+            PropertyFactory.circleRadius(Expression.get("r")),
+            PropertyFactory.circleColor(Expression.get("color")),
+            PropertyFactory.circleBlur(1f),
+            PropertyFactory.circleOpacity(0.7f),
             PropertyFactory.visibility(Property.NONE),
         ),
     )
@@ -248,15 +238,15 @@ private fun updateSources(s: Style, l: MapLayers, dark: Boolean) {
     val markers = if (!l.showMarkers) emptyList() else l.markers.map { mk ->
         Feature.fromGeometry(Point.fromLngLat(mk.lon, mk.lat)).apply {
             addNumberProperty("id", mk.id)
-            addNumberProperty("r", (3.0 + kotlin.math.sqrt(mk.value) * 0.6).coerceAtMost(11.0))
+            addNumberProperty("r", (3.0 + kotlin.math.sqrt(mk.value.coerceAtLeast(0.0).takeIf { it.isFinite() } ?: 0.0) * 0.6).coerceAtMost(11.0))
             addStringProperty("color", WaitRamp.at(0.6, dark).hex())
         }
     }
     s.getSourceAs<GeoJsonSource>(SRC_MARKERS)?.setGeoJson(FeatureCollection.fromFeatures(markers))
 
-    val maxWait = l.intersections.maxOfOrNull { it.value }?.takeIf { it > 0 } ?: 1.0
+    val maxWait = l.intersections.maxOfOrNull { it.value }?.takeIf { it > 0 && it.isFinite() } ?: 1.0
     val inter = if (!l.showIntersections) emptyList() else l.intersections.map { x ->
-        val t = x.value / maxWait
+        val t = (x.value / maxWait).takeIf { it.isFinite() }?.coerceIn(0.0, 1.0) ?: 0.0
         Feature.fromGeometry(Point.fromLngLat(x.lon, x.lat)).apply {
             addNumberProperty("id", x.id)
             addNumberProperty("r", 6.0 + 8.0 * kotlin.math.sqrt(t))
@@ -265,9 +255,14 @@ private fun updateSources(s: Style, l: MapLayers, dark: Boolean) {
     }
     s.getSourceAs<GeoJsonSource>(SRC_INTER)?.setGeoJson(FeatureCollection.fromFeatures(inter))
 
-    val maxHeat = l.heat.maxOfOrNull { it.value }?.takeIf { it > 0 } ?: 1.0
-    val heat = l.heat.map { h ->
-        Feature.fromGeometry(Point.fromLngLat(h.lon, h.lat)).apply { addNumberProperty("w", h.value / maxHeat) }
+    val heatPts = l.heat.filter { it.value.isFinite() && it.value > 0 && it.lat.isFinite() && it.lon.isFinite() }
+    val maxHeat = heatPts.maxOfOrNull { it.value } ?: 1.0
+    val heat = heatPts.map { h ->
+        val w = (h.value / maxHeat).coerceIn(0.0, 1.0)
+        Feature.fromGeometry(Point.fromLngLat(h.lon, h.lat)).apply {
+            addNumberProperty("r", 10.0 + 22.0 * kotlin.math.sqrt(w))
+            addStringProperty("color", WaitRamp.at(0.3 + 0.7 * w, dark).hex())
+        }
     }
     s.getSourceAs<GeoJsonSource>(SRC_HEAT)?.setGeoJson(FeatureCollection.fromFeatures(heat))
     s.getLayer(LAYER_HEAT)?.setProperties(PropertyFactory.visibility(if (l.showHeat) Property.VISIBLE else Property.NONE))

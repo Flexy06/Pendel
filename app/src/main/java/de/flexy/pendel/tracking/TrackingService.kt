@@ -66,6 +66,8 @@ class TrackingService : Service() {
     private var auto = false
     private var activityEnded = false
     private var lastPoint: TrackPoint? = null
+    /** Last position with a real displacement (v3: stillness is judged by position, not by speed). */
+    private var anchor: TrackPoint? = null
     private var sampling = SamplingMode.MOVING
     private var batched = true
     private var uiJob: Job? = null
@@ -188,6 +190,10 @@ class TrackingService : Service() {
                 if ((p.speed ?: 1f) > 0.7f && d < 200 && p.accuracy < 35f) distance += d
             }
             lastPoint = p
+            // indoor GNSS reports phantom speeds (1–14 m/s) – only an accurate fix that is really
+            // somewhere else counts as movement
+            val a = anchor
+            if (a == null || (p.accuracy <= ANCHOR_ACCURACY_M && GeoMath.distance(a.lat, a.lon, p.lat, p.lon) > ANCHOR_RADIUS_M)) anchor = p
             // raw storage keeps GNSS and barometric altitude apart, plus accuracy values
             buffer += rawPoint(
                 tripId = id, t = p.t, lat = p.lat, lon = p.lon, accuracyM = p.accuracy,
@@ -198,11 +204,11 @@ class TrackingService : Service() {
             )
         }
         val last = lastPoint ?: return
-        // indoor fixes with poor accuracy report phantom speeds – they must not reset the arrival timer
-        val moving = (last.speed ?: 0f) > 0.8f && last.accuracy <= 20f
         val now = last.t
         val live = TrackingState.live.value
-        val stationarySince = if (moving) null else (live?.stationarySince ?: now)
+        // still = no accurate fix more than ANCHOR_RADIUS_M away from the anchor for a while
+        val anchorT = anchor?.t ?: now
+        val stationarySince = if (now - anchorT < 15_000) null else anchorT
         TrackingState.update {
             it.copy(
                 distanceM = distance, speedMs = (last.speed ?: 0f).toDouble(), points = it.points + locs.size,
@@ -316,6 +322,8 @@ class TrackingService : Service() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     companion object {
+        private const val ANCHOR_RADIUS_M = 75.0
+        private const val ANCHOR_ACCURACY_M = 20f
         private const val TAG = "TrackingService"
         private const val NOTIFICATION_ID = 42
         private const val FLUSH_EVERY = 20

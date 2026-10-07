@@ -99,6 +99,8 @@ fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
     val busy by vm.busy.collectAsStateWithLifecycle()
     val s = snap.settings
     val context = LocalContext.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    var crash by remember { mutableStateOf(de.flexy.pendel.CrashLog.read(context)) }
     var confirmDeleteAll by remember { mutableStateOf(false) }
     var renamePlace by remember { mutableStateOf<Long?>(null) }
     var deleteRange by remember { mutableStateOf(false) }
@@ -203,6 +205,15 @@ fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
                     )
                     OutlinedButton(onClick = { vm.reanalyze(context) }) { Text("Alles aus Rohdaten neu analysieren") }
                     Note("Rohdaten (GPS-Punkte, Zeitstempel, Genauigkeit) bleiben unverändert. Stopps, Wartezeiten, Routen und Statistiken werden daraus neu berechnet.")
+                    crash?.let { c ->
+                        HorizontalDivider()
+                        Text("Letzter Absturz", style = MaterialTheme.typography.titleSmall)
+                        Note(c.lineSequence().take(4).joinToString("\n"))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(c)) }) { Text("Fehlerbericht kopieren") }
+                            TextButton(onClick = { de.flexy.pendel.CrashLog.clear(context); crash = null }) { Text("Verwerfen") }
+                        }
+                    }
                     HorizontalDivider()
                     Text("Export & Gerätewechsel", style = MaterialTheme.typography.titleSmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

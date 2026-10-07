@@ -300,4 +300,38 @@ class CoreAlgorithmsTest {
         assertEquals(2L, out.routes.first().key.origin)
         assertEquals(4, out.routes.first().tripIds.size)
     }
+
+    @Test
+    fun longStayInsideRecordingSplitsTrip() {
+        // ride there, 50 min indoors (phantom speeds, 10–130 m accuracy, drifting fixes), ride back
+        val there = SyntheticRides.ride(routes[0], monday0745, 1, 465, seed = 21)
+        val end = there.last()
+        val rnd = kotlin.random.Random(9)
+        val stay = (1..600).map { k ->
+            de.flexy.pendel.core.model.TrackPoint(
+                t = end.t + k * 5000L,
+                lat = end.lat + (rnd.nextDouble() - 0.5) * 0.0008,
+                lon = end.lon + (rnd.nextDouble() - 0.5) * 0.0012,
+                accuracy = (10 + rnd.nextDouble() * 120).toFloat(),
+                speed = (rnd.nextDouble() * if (k % 9 == 0) 14 else 2).toFloat(),
+            )
+        }
+        val backStart = stay.last().t + 5000L
+        val back = SyntheticRides.ride(routes[0], monday0745, 1, 465, seed = 22).reversed()
+            .let { r -> val tMax = r.first().t; r.map { p -> p.copy(t = backStart + (tMax - p.t)) } }
+            .sortedBy { it.t }
+        val all = there + stay + back
+        val dwells = de.flexy.pendel.core.track.TripSplitter.findDwells(all)
+        assertEquals(1, dwells.size)
+        assertTrue("stay ${dwells[0].durationS}", dwells[0].durationS > 45 * 60)
+        val parts = de.flexy.pendel.core.track.TripSplitter.split(all, dwells)
+        assertEquals(2, parts.size)
+        assertEquals(all.size, parts.sumOf { it.size }) // no raw point lost
+        val a = TripAnalyzer.analyze(parts[0], TransportMode.BICYCLE)!!
+        val clean = TripAnalyzer.analyze(there, TransportMode.BICYCLE)!!
+        assertTrue("first part ${a.metrics.durationS} vs ${clean.metrics.durationS}", abs(a.metrics.durationS - clean.metrics.durationS) < 60)
+        assertTrue(TripAnalyzer.analyze(parts[1], TransportMode.BICYCLE)!!.metrics.distanceM > 3000)
+        // red lights and short stops never split a ride
+        assertEquals(0, de.flexy.pendel.core.track.TripSplitter.findDwells(there).size)
+    }
 }

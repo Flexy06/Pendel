@@ -105,6 +105,10 @@ interface TrackPointDao {
 
     @Query("SELECT COUNT(*) FROM track_points")
     fun observeTotalCount(): Flow<Int>
+
+    /** Re-groups raw fixes into another trip (used when one recording contains two rides). */
+    @Query("UPDATE track_points SET tripId = :toTrip WHERE tripId = :fromTrip AND t >= :from AND t < :to")
+    suspend fun moveToTrip(fromTrip: Long, toTrip: Long, from: Long, to: Long): Int
 }
 
 @Dao

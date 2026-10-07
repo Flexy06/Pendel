@@ -294,3 +294,12 @@ den Rohdaten korrigierbar:
 | ~1000 Höhenmeter pro flacher Fahrt | Barometerwert pro GPS-Batch statt pro Fix, Sprünge bis 110 m | Barometer-Ringpuffer mit Zeitstempel, Median ±2 s je Fix; Analyse verwirft unplausible Höhen (> 1,5 m/s vertikal) statt Unsinn anzuzeigen |
 | Kurzer Weg als Radfahrt klassifiziert | Activity-Hinweis überstimmte das Tempoprofil | Nur vom Nutzer gesetzter Modus ist bindend; Gehtempo gewinnt gegen „Radfahren erkannt“ |
 | Mensa → Zuhause nicht mit Uni → Zuhause verglichen | Mensa ist eigener Ort | Ortsgruppen (`places.parentPlaceId`, Schema v3): Routen nutzen die Gruppen-Wurzel; App schlägt nahe Orte (≤ 400 m) zum Zusammenfassen vor |
+
+## 12. Analyse v3 (Version 0.3.1)
+
+| Problem | Ursache | Lösung |
+|---|---|---|
+| Hin- und Rückfahrt mit 50 min Mensa-Aufenthalt als *eine* Fahrt (91 min, 16,7 km) | Live-Stillstand wurde aus der momentanen Geschwindigkeit bestimmt; Indoor-GPS meldet Phantom-Tempo (1–14 m/s), der Timer wurde ständig zurückgesetzt | **Analyse:** `TripSplitter` findet Aufenthalte ≥ 8 min innerhalb 150 m (laufender Mittelpunkt, Fixes > 50 m Genauigkeit zählen nicht) mit echter Strecke davor und danach und teilt die Aufzeichnung in getrennte Fahrten (Rohpunkte werden nur umgruppiert, nichts gelöscht). **Live:** Stillstand = keine genaue Position (≤ 20 m) mehr als 75 m vom letzten Ankerpunkt entfernt – Tempo spielt keine Rolle mehr |
+| Absturz beim Einschalten der Wartezeit-Heatmap | MapLibre-`HeatmapLayer` (Offscreen-Rendering) | Weichgezeichnete Kreise (`CircleLayer` + `circle-blur`), NaN-Schutz für alle Kartenwerte |
+| Abstürze schwer nachvollziehbar | – | `CrashLog`: letzter Stacktrace lokal gespeichert, in den Einstellungen kopierbar |
+

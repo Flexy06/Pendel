@@ -17,6 +17,7 @@ class PendelApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashLog.install(this)
         val processStart = System.currentTimeMillis()
         container = AppContainer(this)
         MapLibre.getInstance(this)
