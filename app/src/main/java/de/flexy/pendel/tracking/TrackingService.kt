@@ -70,6 +70,7 @@ class TrackingService : Service() {
     private var batched = true
     private var uiJob: Job? = null
     private var finishing = false
+    private var knownPlaces: List<de.flexy.pendel.data.db.PlaceEntity> = emptyList()
 
     private val callback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -132,6 +133,7 @@ class TrackingService : Service() {
                 if (auto) TransportMode.BICYCLE else null,
             )
             tripId = id
+            knownPlaces = runCatching { container.db.placeDao().all() }.getOrDefault(emptyList())
             TrackingState.set(LiveTrip(tripId = id, startTime = startTime, auto = auto))
         }
         if (barometer.available) barometer.start()
@@ -192,11 +194,12 @@ class TrackingService : Service() {
                 speedMs = p.speed, bearingDeg = p.bearing, gpsAltitudeM = p.altitude,
                 speedAccuracyMs = if (l.hasSpeedAccuracy()) l.speedAccuracyMetersPerSecond else null,
                 verticalAccuracyM = if (l.hasVerticalAccuracy()) l.verticalAccuracyMeters else null,
-                baroAltitudeM = barometer.altitudeM,
+                baroAltitudeM = barometer.altitudeAt(l.elapsedRealtimeNanos),
             )
         }
         val last = lastPoint ?: return
-        val moving = (last.speed ?: 0f) > 0.8f
+        // indoor fixes with poor accuracy report phantom speeds – they must not reset the arrival timer
+        val moving = (last.speed ?: 0f) > 0.8f && last.accuracy <= 20f
         val now = last.t
         val live = TrackingState.live.value
         val stationarySince = if (moving) null else (live?.stationarySince ?: now)
@@ -217,10 +220,16 @@ class TrackingService : Service() {
         }
         updateNotification(distance, live?.startTime ?: now)
 
-        // auto stop
+        // auto stop – v2: standing still inside a known place (Uni, Zuhause, Mensa …) means we
+        // arrived; stop after 45 s instead of waiting minutes and recording indoor GPS noise
+        // (only after having ridden a bit – otherwise unlocking the bike at home would end the trip)
+        val atKnownPlace = distance > 300 &&
+            knownPlaces.any { GeoMath.distance(it.lat, it.lon, last.lat, last.lon) <= it.radiusM }
         val limit = when {
+            auto && atKnownPlace -> 45
             auto && activityEnded -> 120
             auto -> 240
+            atKnownPlace -> 5 * 60
             else -> 20 * 60
         }
         if (stillFor >= limit) {

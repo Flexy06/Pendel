@@ -170,7 +170,7 @@ fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { renamePlace = p.id }) {
                                 Column(Modifier.weight(1f)) {
                                     Text(p.name, style = MaterialTheme.typography.bodyLarge)
-                                    Text("%.4f, %.4f".format(p.lat, p.lon), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text((p.parentPlaceId?.let { pp -> "gehört zu ${snap.places[pp]?.name ?: "?"} · " } ?: "") + "%.4f, %.4f".format(p.lat, p.lon), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Icon(Icons.Outlined.Edit, "Umbenennen")
                             }
@@ -249,10 +249,16 @@ fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
         )
     }
     renamePlace?.let { pid ->
+        val place = snap.places[pid]
         PlaceDialog(
-            place = snap.places[pid],
+            place = place,
+            others = snap.places.values.filter { it.id != pid && it.parentPlaceId == null }.sortedBy { it.name },
             onDismiss = { renamePlace = null },
-            onSave = { name, kind -> vm.renamePlace(pid, name, kind); renamePlace = null },
+            onSave = { name, kind, parent ->
+                vm.renamePlace(pid, name, kind)
+                if (parent != place?.parentPlaceId) vm.setPlaceParent(pid, parent)
+                renamePlace = null
+            },
         )
     }
     if (deleteRange) {
@@ -267,9 +273,15 @@ private val placeSuggestions = listOf("Zuhause" to "HOME", "Uni" to "UNI", "Spor
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun PlaceDialog(place: de.flexy.pendel.data.db.PlaceEntity?, onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
+private fun PlaceDialog(
+    place: de.flexy.pendel.data.db.PlaceEntity?,
+    others: List<de.flexy.pendel.data.db.PlaceEntity>,
+    onDismiss: () -> Unit,
+    onSave: (String, String, Long?) -> Unit,
+) {
     var text by remember(place?.id) { mutableStateOf(place?.name ?: "") }
     var kind by remember(place?.id) { mutableStateOf(place?.kind ?: "OTHER") }
+    var parent by remember(place?.id) { mutableStateOf(place?.parentPlaceId) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Ort benennen") },
@@ -286,9 +298,19 @@ private fun PlaceDialog(place: de.flexy.pendel.data.db.PlaceEntity?, onDismiss: 
                     Text("Das ist mein Zuhause")
                 }
                 Note("Fahrten zu verschiedenen Orten werden als eigene Strecken ausgewertet (z. B. Uni und Sport) – nie als alternative Wege.")
+                if (others.isNotEmpty()) {
+                    Text("Gehört zu", style = MaterialTheme.typography.labelLarge)
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        androidx.compose.material3.FilterChip(parent == null, onClick = { parent = null }, label = { Text("Eigenständig") })
+                        others.forEach { o ->
+                            androidx.compose.material3.FilterChip(parent == o.id, onClick = { parent = o.id }, label = { Text(o.name) })
+                        }
+                    }
+                    Note("Z. B. Mensa → Uni: Fahrten ab der Mensa zählen dann zur Uni-Strecke.")
+                }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(text.ifBlank { place?.name ?: "Ort" }, kind) }) { Text("Speichern") } },
+        confirmButton = { TextButton(onClick = { onSave(text.ifBlank { place?.name ?: "Ort" }, kind, parent) }) { Text("Speichern") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
     )
 }

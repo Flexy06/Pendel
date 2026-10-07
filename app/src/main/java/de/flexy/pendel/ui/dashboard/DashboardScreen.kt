@@ -132,6 +132,27 @@ fun DashboardScreen(vm: AppViewModel, nav: NavHostController) {
                 onStop = { vm.stopRecording(context) },
             )
         }
+        snap.placeGroupSuggestions.firstOrNull()?.let { (child, parent) ->
+            item(key = "group-${child.id}") {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("„${child.name}“ zu „${parent.name}“ zählen?", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Die Orte liegen nah beieinander. Zusammengefasst werden Fahrten ab ${child.name} mit Fahrten ab ${parent.name} verglichen.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilledTonalButton(onClick = { vm.setPlaceParent(child.id, parent.id) }) { Text("Zusammenfassen") }
+                            androidx.compose.material3.TextButton(onClick = { vm.dismissPlaceGroup(child.id, parent.id) }) { Text("Nein") }
+                        }
+                    }
+                }
+            }
+        }
         busy?.let { b ->
             item {
                 Column {

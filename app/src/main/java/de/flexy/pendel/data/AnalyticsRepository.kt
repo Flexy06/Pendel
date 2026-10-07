@@ -114,6 +114,8 @@ data class AnalyticsSnapshot(
     val ods: List<OdInfo> = emptyList(),
     /** Destinations ("Strecken"), primary first. */
     val corridors: List<CorridorInfo> = emptyList(),
+    /** Nearby places that probably belong together (child → parent), e.g. Mensa → Uni. */
+    val placeGroupSuggestions: List<Pair<PlaceEntity, PlaceEntity>> = emptyList(),
     val intersections: List<IntersectionInfo> = emptyList(),
     val waitEvents: List<WaitEventEntity> = emptyList(),
     val kpis: Kpis? = null,
@@ -199,6 +201,7 @@ class AnalyticsRepository(
             routeStats = routeStats,
             ods = ods,
             corridors = corridors,
+            placeGroupSuggestions = groupSuggestions(raw.places, s.dismissedPlaceGroups),
             intersections = intersections,
             waitEvents = raw.waits,
             kpis = kpis(statTrips, corridors.firstOrNull { it.isPrimary }),
@@ -222,6 +225,20 @@ class AnalyticsRepository(
             val w = waitsBy[x.id].orEmpty().map { WaitObs(it.tripId, it.durationS, it.confidence, it.dayOfWeek, it.minuteOfDay) }
             IntersectionInfo(x, IntersectionStatsCalculator.compute(p, w))
         }.filter { it.stats.passes > 0 }.sortedByDescending { it.stats.totalWaitS }
+    }
+
+    /**
+     * A non-home/uni place within 400 m of the Uni or Zuhause place is very likely part of it
+     * (Mensa, Bibliothek, Fahrradkeller). Suggested once; the user confirms or dismisses.
+     */
+    private fun groupSuggestions(places: List<PlaceEntity>, dismissed: Set<String>): List<Pair<PlaceEntity, PlaceEntity>> {
+        val anchors = places.filter { (it.kind == "UNI" || it.kind == "HOME") && it.parentPlaceId == null }
+        return places.filter { it.kind == "OTHER" && it.parentPlaceId == null }.mapNotNull { p ->
+            anchors.filter { it.id != p.id }
+                .minByOrNull { de.flexy.pendel.core.geo.GeoMath.distance(it.lat, it.lon, p.lat, p.lon) }
+                ?.takeIf { de.flexy.pendel.core.geo.GeoMath.distance(it.lat, it.lon, p.lat, p.lon) <= 400.0 && "${p.id}-${it.id}" !in dismissed }
+                ?.let { p to it }
+        }
     }
 
     /** Groups both directions between two places into one corridor; resolves the primary one. */

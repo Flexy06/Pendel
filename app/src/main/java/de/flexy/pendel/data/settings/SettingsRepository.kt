@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import de.flexy.pendel.core.optimize.Objective
 import de.flexy.pendel.core.optimize.Weights
@@ -34,6 +35,8 @@ data class Settings(
     val onboardingDone: Boolean = false,
     /** Key of the main corridor ("Hauptstrecke"), see corridorKey(); null = automatic (Uni). */
     val primaryCorridor: String? = null,
+    /** Place-group suggestions the user declined ("childId-parentId"). */
+    val dismissedPlaceGroups: Set<String> = emptySet(),
 ) {
     companion object {
         const val DEFAULT_OVERPASS = "https://overpass-api.de/api/interpreter"
@@ -62,6 +65,7 @@ class SettingsRepository(private val context: Context) {
         val mapStyleDark = stringPreferencesKey("map_style_dark")
         val onboarding = booleanPreferencesKey("onboarding_done")
         val primaryCorridor = stringPreferencesKey("primary_corridor")
+        val dismissedGroups = stringSetPreferencesKey("dismissed_place_groups")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { p ->
@@ -87,6 +91,7 @@ class SettingsRepository(private val context: Context) {
             mapStyleDarkUrl = p[K.mapStyleDark] ?: Settings.DEFAULT_MAP_STYLE_DARK,
             onboardingDone = p[K.onboarding] ?: false,
             primaryCorridor = p[K.primaryCorridor],
+            dismissedPlaceGroups = p[K.dismissedGroups] ?: emptySet(),
         )
     }
 
@@ -112,6 +117,7 @@ class SettingsRepository(private val context: Context) {
         it[K.mapStyle] = light.trim().ifEmpty { Settings.DEFAULT_MAP_STYLE }
         it[K.mapStyleDark] = dark.trim().ifEmpty { Settings.DEFAULT_MAP_STYLE_DARK }
     }
+    suspend fun dismissPlaceGroup(key: String) = context.dataStore.edit { it[K.dismissedGroups] = (it[K.dismissedGroups] ?: emptySet()) + key }
     suspend fun setPrimaryCorridor(key: String) = context.dataStore.edit { it[K.primaryCorridor] = key }
     suspend fun setOnboardingDone() = context.dataStore.edit { it[K.onboarding] = true }
 }

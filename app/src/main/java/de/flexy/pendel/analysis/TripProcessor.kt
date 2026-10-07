@@ -31,7 +31,8 @@ class TripProcessor(
     suspend fun process(tripId: Long, allowNetwork: Boolean): Boolean {
         val trip = db.tripDao().get(tripId) ?: return false
         val raw = db.pointDao().forTrip(tripId).map { it.toCore() }
-        val analysis = TripAnalyzer.analyze(raw, trip.modeHint())
+        // a mode the user set is authoritative; an activity-recognition hint is only a prior
+        val analysis = TripAnalyzer.analyze(raw, trip.modeHint(), hintIsAuthoritative = trip.userMode != null)
 
         if (analysis == null) {
             if (raw.size < 3) {

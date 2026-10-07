@@ -192,6 +192,7 @@ class Importer(private val db: PendelDatabase) {
     private suspend fun readPlaces(r: JsonReader): Int {
         var added = 0
         val existing = db.placeDao().all().toMutableList()
+        val parents = ArrayList<Pair<String, String>>() // child name → parent name
         r.beginArray()
         while (r.hasNext()) {
             var name = ""
@@ -200,6 +201,7 @@ class Importer(private val db: PendelDatabase) {
             var radius = 150.0
             var kind = "OTHER"
             var userNamed = false
+            var parentName: String? = null
             r.beginObject()
             while (r.hasNext()) {
                 val n = r.nextName()
@@ -211,11 +213,13 @@ class Importer(private val db: PendelDatabase) {
                     "radiusM" -> radius = r.nextDouble()
                     "kind" -> kind = r.nextString()
                     "userNamed" -> userNamed = r.nextBoolean()
+                    "parent" -> parentName = r.nextString()
                     else -> r.skipValue()
                 }
             }
             r.endObject()
             if (!userNamed || lat.isNaN() || lon.isNaN()) continue
+            parentName?.let { parents += name to it }
             val near = existing.firstOrNull { GeoMath.distance(it.lat, it.lon, lat, lon) < maxOf(radius, it.radiusM) }
             if (near != null) {
                 if (!near.userNamed) db.placeDao().rename(near.id, name, kind)
@@ -226,6 +230,13 @@ class Importer(private val db: PendelDatabase) {
             added++
         }
         r.endArray()
+        // restore place groups by name (ids differ between devices)
+        val now = db.placeDao().all()
+        for ((child, parent) in parents) {
+            val c = now.firstOrNull { it.name == child } ?: continue
+            val p = now.firstOrNull { it.name == parent } ?: continue
+            if (c.parentPlaceId == null) db.placeDao().setParent(c.id, p.id)
+        }
         return added
     }
 }

@@ -18,7 +18,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Migration tests (run on a device/emulator: `./gradlew :app:connectedDebugAndroidTest`).
+ * Migration tests 1 → 2 → 3 (run on a device/emulator: `./gradlew :app:connectedDebugAndroidTest`).
  *
  * Creates a real schema-v1 database from `schemas/.../1.json`, fills it with trips, raw GPS points,
  * stops, intersections and wait events, migrates it and checks
@@ -67,7 +67,7 @@ class MigrationTest {
     }
 
     private fun migrate(): SupportSQLiteDatabase =
-        helper.runMigrationsAndValidate(DB, 2, true, Migration1To2("Europe/Berlin"))
+        helper.runMigrationsAndValidate(DB, 3, true, Migration1To2("Europe/Berlin"), Migration2To3)
 
     private fun SupportSQLiteDatabase.long(sql: String): Long = query(sql).use { it.moveToFirst(); it.getLong(0) }
     private fun SupportSQLiteDatabase.rows(sql: String): Int = query(sql).use { it.count }
@@ -125,6 +125,8 @@ class MigrationTest {
         assertEquals("Meine Ampel", string(db, "SELECT userName FROM intersections WHERE id = 2"))
         assertEquals(1, db.long("SELECT userNamed FROM routes WHERE id = 1"))
         assertEquals(1, db.long("SELECT analysisVersion FROM routes WHERE id = 1"))
+        // v3: place groups – new column, existing places stay independent
+        assertEquals(2, db.long("SELECT COUNT(*) FROM places WHERE parentPlaceId IS NULL"))
         // the app must refresh derived passes after the migration
         assertEquals("PENDING", string(db, "SELECT status FROM analysis_runs ORDER BY id DESC LIMIT 1"))
         db.close()

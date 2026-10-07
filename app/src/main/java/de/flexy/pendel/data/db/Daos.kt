@@ -267,6 +267,10 @@ interface PlaceDao {
     @Query("UPDATE places SET name = :name, kind = :kind, userNamed = 1 WHERE id = :id")
     suspend fun rename(id: Long, name: String, kind: String)
 
+    /** Place group: [parentId] = null removes the place from its group. */
+    @Query("UPDATE places SET parentPlaceId = :parentId, userNamed = 1 WHERE id = :id")
+    suspend fun setParent(id: Long, parentId: Long?)
+
     @Query("DELETE FROM places WHERE id IN (:ids)")
     suspend fun delete(ids: List<Long>)
 

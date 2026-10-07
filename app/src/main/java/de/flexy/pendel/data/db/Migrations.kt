@@ -148,4 +148,14 @@ VALUES (1, CAST(strftime('%s', 'now') AS INTEGER) * 1000, NULL, 0, 'PENDING', 'M
     }
 }
 
-val ALL_MIGRATIONS: Array<Migration> = arrayOf(Migration1To2())
+/**
+ * v2 → v3: place groups (Mensa belongs to Uni). Purely additive – nullable column, no data change.
+ * Derived routes are rebuilt by the analysis (algorithm version 2).
+ */
+object Migration2To3 : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `places` ADD COLUMN `parentPlaceId` INTEGER")
+    }
+}
+
+val ALL_MIGRATIONS: Array<Migration> = arrayOf(Migration1To2(), Migration2To3)

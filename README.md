@@ -85,6 +85,7 @@ adb bugreport bugreport.zip   # in Battery Historian öffnen
 | 9 | Optimale Route | ✅ |
 | – | Datenarchitektur v2: Roh-/Analyse-Trennung, Versionierung, Migration + Tests, Import, Zeitraum-Löschen | ✅ |
 | – | Mehrere Ziele (Strecken-Tabs) + Hauptstrecke | ✅ |
+| – | Analyse v2 nach echten Fahrten: Ankunfts-Trimmung, Höhen-Plausibilität, Modus, Ortsgruppen (Schema v3) | ✅ |
 | 10 | Polishing, Akku-Messung, Segmentanalyse | offen |
 
 **Hinweis:** Die Android-Schicht wurde ohne Android-SDK geschrieben, weil Googles Maven-Repository in der

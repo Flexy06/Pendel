@@ -69,7 +69,8 @@ class Exporter(private val db: PendelDatabase) {
                     if (i > 0) w.write(",")
                     w.write(
                         JSONObject().put("name", p.name).put("lat", p.lat).put("lon", p.lon).put("radiusM", p.radiusM)
-                            .put("kind", p.kind).put("userNamed", p.userNamed).toString(),
+                            .put("kind", p.kind).put("userNamed", p.userNamed)
+                            .put("parent", p.parentPlaceId?.let { pid -> places.firstOrNull { it.id == pid }?.name }).toString(),
                     )
                 }
                 w.write("],\"routeNames\":[")

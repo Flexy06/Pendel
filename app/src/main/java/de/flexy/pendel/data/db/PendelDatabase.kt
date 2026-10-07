@@ -22,7 +22,7 @@ import androidx.room.RoomDatabase
         IntersectionEntity::class,
         PlaceEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class PendelDatabase : RoomDatabase() {

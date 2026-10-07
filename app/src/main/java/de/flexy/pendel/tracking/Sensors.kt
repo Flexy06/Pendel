@@ -33,28 +33,61 @@ class BarometerSource(context: Context) : SensorEventListener {
     private val sm = context.getSystemService(SensorManager::class.java)
     private val sensor: Sensor? = sm?.getDefaultSensor(Sensor.TYPE_PRESSURE)
 
-    @Volatile var altitudeM: Double? = null
-        private set
+    /**
+     * v2: ring buffer of (sensor timestamp, pressure). v1 attached the *latest* value to every fix
+     * of a location batch (stale, identical values within a batch, jumps between batches). Now each
+     * fix gets the median pressure measured around its own timestamp.
+     */
+    private val times = LongArray(BUFFER)
+    private val pressures = FloatArray(BUFFER)
+    private var count = 0
+    private var head = 0
 
     val available: Boolean get() = sensor != null
 
     fun start() {
         val s = sensor ?: return
-        sm?.registerListener(this, s, SensorManager.SENSOR_DELAY_NORMAL, 10_000_000)
+        sm?.registerListener(this, s, SensorManager.SENSOR_DELAY_NORMAL, 5_000_000)
     }
 
     fun stop() {
         sm?.unregisterListener(this)
-        altitudeM = null
+        synchronized(this) { count = 0; head = 0 }
     }
 
     override fun onSensorChanged(event: SensorEvent) {
         val p = event.values.firstOrNull() ?: return
-        // altitude relative to standard atmosphere – absolute offset irrelevant, deltas are precise
-        altitudeM = SensorManager.getAltitude(SensorManager.PRESSURE_STANDARD_ATMOSPHERE, p).toDouble()
+        if (p < 300f || p > 1100f) return // physically impossible at ground level → glitch
+        synchronized(this) {
+            times[head] = event.timestamp // elapsedRealtimeNanos clock
+            pressures[head] = p
+            head = (head + 1) % BUFFER
+            if (count < BUFFER) count++
+        }
+    }
+
+    /**
+     * Barometric altitude (standard atmosphere) for a fix taken at [elapsedRealtimeNanos]:
+     * median of the pressure samples within ±2 s, or null if there are none.
+     */
+    fun altitudeAt(elapsedRealtimeNanos: Long): Double? {
+        val window = ArrayList<Float>()
+        synchronized(this) {
+            for (i in 0 until count) {
+                if (kotlin.math.abs(times[i] - elapsedRealtimeNanos) <= 2_000_000_000L) window += pressures[i]
+            }
+        }
+        if (window.isEmpty()) return null
+        window.sort()
+        val p = window[window.size / 2]
+        return SensorManager.getAltitude(SensorManager.PRESSURE_STANDARD_ATMOSPHERE, p).toDouble()
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+
+    companion object {
+        private const val BUFFER = 512 // ~100 s at SENSOR_DELAY_NORMAL
+    }
 }
 
 /**

@@ -124,9 +124,17 @@ object GlobalAnalysis {
         val places = PlaceClusterer.cluster(endpoints, input.places)
 
         // 2) routes (per origin/destination/mode)
+        // place groups (v2): routes are keyed by the group root, so "Mensa → Zuhause" and
+        // "Uni → Zuhause" are compared with each other when Mensa belongs to Uni
+        val parentOf = input.places.filter { it.parentId != null }.associate { it.id to it.parentId!! }
+        fun root(id: Long): Long {
+            var cur = id
+            repeat(5) { cur = parentOf[cur] ?: return cur }
+            return cur
+        }
         val sigs = trips.mapNotNull { t ->
-            val o = places.startPlace[t.id] ?: return@mapNotNull null
-            val d = places.endPlace[t.id] ?: return@mapNotNull null
+            val o = places.startPlace[t.id]?.let(::root) ?: return@mapNotNull null
+            val d = places.endPlace[t.id]?.let(::root) ?: return@mapNotNull null
             if (o == d) return@mapNotNull null // round trip – no meaningful A→B route
             TripSignature(t.id, RouteKey(o, d, t.mode), t.startTime, t.signature)
         }

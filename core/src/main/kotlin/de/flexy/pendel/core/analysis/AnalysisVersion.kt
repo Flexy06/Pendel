@@ -9,7 +9,10 @@ package de.flexy.pendel.core.analysis
  *
  * History:
  *  1 – initial algorithms (anchor stop detection, kernel time model, coverage route clustering)
+ *  2 – movement-window trimming (indoor GPS noise at arrival), speed profile can overrule an
+ *      activity-recognition hint (walks), plausibility check for altitude, place groups
+ *      (e.g. Mensa counts as Uni for routes)
  */
 object AnalysisVersion {
-    const val CURRENT = 1
+    const val CURRENT = 2
 }

@@ -12,7 +12,16 @@ import de.flexy.pendel.core.model.TransportMode
 
 enum class PlaceKind { HOME, UNI, OTHER }
 
-data class PlaceInput(val id: Long, val lat: Double, val lon: Double, val radiusM: Double, val kind: PlaceKind, val userNamed: Boolean)
+data class PlaceInput(
+    val id: Long,
+    val lat: Double,
+    val lon: Double,
+    val radiusM: Double,
+    val kind: PlaceKind,
+    val userNamed: Boolean,
+    /** Place group: a place that belongs to another one (Mensa → Uni) shares its routes. */
+    val parentId: Long? = null,
+)
 
 data class Endpoint(val tripId: Long, val lat: Double, val lon: Double, val isStart: Boolean, val minuteOfDay: Int, val dayOfWeek: Int)
 

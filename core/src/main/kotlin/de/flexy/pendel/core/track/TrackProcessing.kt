@@ -20,6 +20,8 @@ object CoreConfig {
     const val ELEVATION_HYSTERESIS_M = 3.0
     const val MIN_TRIP_DISTANCE_M = 300.0
     const val MIN_TRIP_DURATION_S = 90.0
+    /** Faster vertical change than this between two fixes is a sensor glitch (bike/walk). */
+    const val MAX_VERTICAL_RATE_MS = 1.5
 }
 
 object TrackCleaner {
@@ -86,17 +88,75 @@ object TrackCleaner {
 }
 
 object ModeClassifier {
-    /** Speed-based guess; an activity-recognition hint wins when available. */
-    fun classify(movingSpeeds: List<Double>, hint: TransportMode?): TransportMode {
-        if (hint != null && hint != TransportMode.UNKNOWN) return hint
-        if (movingSpeeds.size < 10) return TransportMode.UNKNOWN
-        val sorted = movingSpeeds.sorted()
-        val p85 = Descriptive.quantileSorted(sorted, 0.85)
+    /**
+     * Speed-profile based mode.
+     *
+     * - A user-set mode ([hintIsAuthoritative]) always wins.
+     * - An activity-recognition hint (e.g. "cycling detected" that started the recording) is only
+     *   a prior: if the speed profile clearly contradicts it (walking pace), the profile wins.
+     *   v2: real data showed a 12-min walk being stored as a bike ride because of the hint.
+     */
+    fun classify(movingSpeeds: List<Double>, hint: TransportMode?, hintIsAuthoritative: Boolean = false): TransportMode {
+        val usableHint = hint?.takeIf { it != TransportMode.UNKNOWN }
+        if (usableHint != null && hintIsAuthoritative) return usableHint
+        val bySpeed = bySpeed(movingSpeeds) ?: return usableHint ?: TransportMode.UNKNOWN
+        return when {
+            usableHint == null -> bySpeed
+            // walking pace can't be a bike/car ride, whatever the activity classifier said
+            bySpeed == TransportMode.WALK -> TransportMode.WALK
+            // a bike hint is trusted above walking pace (fast cyclists overlap with slow traffic)
+            else -> usableHint
+        }
+    }
+
+    private fun bySpeed(movingSpeeds: List<Double>): TransportMode? {
+        if (movingSpeeds.size < 10) return null
+        val p85 = Descriptive.quantileSorted(movingSpeeds.sorted(), 0.85)
         return when {
             p85 < 2.6 -> TransportMode.WALK
             p85 < 11.5 -> TransportMode.BICYCLE
             else -> TransportMode.CAR
         }
+    }
+}
+
+/**
+ * Finds the span of *real* movement in a track (v2).
+ *
+ * Indoors at the destination GNSS jumps around with poor accuracy and Doppler spikes; v1 counted
+ * that as riding (+9 min, +2 km on a real trip). Real movement is sustained: several consecutive
+ * fixes with good accuracy above walking/riding pace. Everything before the first and after the
+ * last sustained run is lock-up / walk-in / indoor noise and is trimmed.
+ */
+object MovementWindow {
+    var goodAccuracyM = 20f
+    var minRun = 4
+
+    fun find(points: List<TrackPoint>, speeds: DoubleArray): IntRange? =
+        find(points, speeds, 2.0) ?: find(points, speeds, 0.9)
+
+    private fun find(points: List<TrackPoint>, speeds: DoubleArray, minSpeed: Double): IntRange? {
+        val n = points.size
+        val ok = BooleanArray(n) { speeds[it] >= minSpeed && points[it].accuracy <= goodAccuracyM }
+        var first = -1
+        var last = -1
+        var run = 0
+        for (i in 0 until n) {
+            if (ok[i]) {
+                run++
+                if (run >= minRun) {
+                    if (first < 0) first = i - run + 1
+                    last = i
+                }
+            } else run = 0
+        }
+        if (first < 0) return null
+        // include acceleration before / braking after the sustained movement
+        var from = first
+        while (from > 0 && speeds[from - 1] > 0.8 && first - from < 10) from--
+        var to = last
+        while (to < n - 1 && speeds[to + 1] > 0.8 && points[to + 1].accuracy <= goodAccuracyM && to - last < 10) to++
+        return from..to
     }
 }
 
@@ -125,9 +185,14 @@ data class TripAnalysis(
 )
 
 object TripAnalyzer {
-    fun analyze(raw: List<TrackPoint>, modeHint: TransportMode? = null): TripAnalysis? {
-        val full = TrackCleaner.clean(raw, modeHint ?: TransportMode.UNKNOWN)
-        if (full.size < 3) return null
+    fun analyze(raw: List<TrackPoint>, modeHint: TransportMode? = null, hintIsAuthoritative: Boolean = false): TripAnalysis? {
+        val cleaned = TrackCleaner.clean(raw, modeHint ?: TransportMode.UNKNOWN)
+        if (cleaned.size < 3) return null
+        // v2: cut indoor noise / walking in before & after the real movement
+        val full = MovementWindow.find(cleaned, TrackCleaner.speeds(cleaned))
+            ?.takeIf { it.last - it.first >= 2 }
+            ?.let { cleaned.subList(it.first, it.last + 1).toList() }
+            ?: cleaned
         // Trim terminal stationary phases (unlocking/locking the bike, auto-stop wait time):
         // trip duration is measured from first to last movement so trips stay comparable.
         val fullStops = StopDetector.detect(full, TrackCleaner.speeds(full))
@@ -159,7 +224,7 @@ object TripAnalyzer {
         else Descriptive.quantileSorted(movingSpeeds.sorted(), 0.95)
         val (gain, loss) = elevation(clean)
 
-        val mode = ModeClassifier.classify(movingSpeeds, modeHint)
+        val mode = ModeClassifier.classify(movingSpeeds, modeHint, hintIsAuthoritative)
         val latLons = clean.map { LatLon(it.lat, it.lon) }
         val simplified = PolylineOps.simplify(latLons, CoreConfig.POLYLINE_TOLERANCE_M)
         val signature = PolylineOps.resample(simplified, CoreConfig.SIGNATURE_SPACING_M)
@@ -185,15 +250,34 @@ object TripAnalyzer {
         )
     }
 
-    /** Cumulative gain/loss with hysteresis so that sensor noise does not add up. */
+    /**
+     * Cumulative gain/loss with hysteresis so that sensor noise does not add up.
+     *
+     * v2: returns null when the altitude signal is implausible instead of reporting garbage.
+     * Real data had barometric jumps of up to 110 m between fixes (≈ 1000 "Höhenmeter" per flat
+     * ride). A bicycle cannot climb faster than ~1.5 m/s, so repeated steeper jumps mean the
+     * sensor signal is unusable for this trip.
+     */
     fun elevation(points: List<TrackPoint>): Pair<Double?, Double?> {
-        val alts = points.mapNotNull { it.altitude }
-        if (alts.size < points.size / 2 || alts.size < 5) return null to null
-        // light moving-average smoothing (window 5)
-        val smooth = alts.indices.map { i ->
+        val samples = points.filter { it.altitude != null }
+        if (samples.size < points.size / 2 || samples.size < 5) return null to null
+        var implausible = 0
+        for (i in 1 until samples.size) {
+            val dt = (samples[i].t - samples[i - 1].t) / 1000.0
+            if (dt < 0.5) continue
+            val rate = kotlin.math.abs(samples[i].altitude!! - samples[i - 1].altitude!!) / dt
+            if (rate > CoreConfig.MAX_VERTICAL_RATE_MS) implausible++
+        }
+        if (implausible >= 3) return null to null
+        val alts = samples.map { it.altitude!! }
+        // robust smoothing: rolling median (window 7) then moving average (window 5)
+        val med = alts.indices.map { i ->
+            alts.subList(maxOf(0, i - 3), minOf(alts.size, i + 4)).sorted().let { it[it.size / 2] }
+        }
+        val smooth = med.indices.map { i ->
             val from = maxOf(0, i - 2)
-            val to = minOf(alts.size - 1, i + 2)
-            (from..to).sumOf { alts[it] } / (to - from + 1)
+            val to = minOf(med.size - 1, i + 2)
+            (from..to).sumOf { med[it] } / (to - from + 1)
         }
         var gain = 0.0
         var loss = 0.0

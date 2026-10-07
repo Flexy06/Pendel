@@ -93,7 +93,7 @@ class GlobalAnalyzer(
                 )
             },
             places = places.map {
-                PlaceInput(it.id, it.lat, it.lon, it.radiusM, runCatching { PlaceKind.valueOf(it.kind) }.getOrDefault(PlaceKind.OTHER), it.userNamed)
+                PlaceInput(it.id, it.lat, it.lon, it.radiusM, runCatching { PlaceKind.valueOf(it.kind) }.getOrDefault(PlaceKind.OTHER), it.userNamed, it.parentPlaceId)
             },
             routes = routes.map {
                 RouteInput(it.id, RouteKey(it.originPlaceId, it.destPlaceId, runCatching { TransportMode.valueOf(it.mode) }.getOrDefault(TransportMode.UNKNOWN)), PolylineCodec.decode(it.signature))

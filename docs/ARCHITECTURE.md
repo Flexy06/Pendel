@@ -282,3 +282,15 @@ Löschen, Demo-Daten.
 Bewusst später (Phase 10+): Segmentanalyse zwischen Kreuzungen („wo verliere ich Zeit
 zwischen Ampeln“), manuelles Zusammenführen von Routen, Geofence-Trigger für Zuhause/Uni,
 Wetter als Einflussfaktor, Wear-OS-Tile, Ausdünnen alter Rohdaten, Room-Migrationstests.
+
+## 11. Änderungen nach den ersten echten Fahrten (Analyse v2, Schema v3)
+
+Auswertung der ersten 5 echten Aufzeichnungen (Okt. 2026) ergab vier Fehler, alle per Reanalyse aus
+den Rohdaten korrigierbar:
+
+| Problem | Ursache | Lösung |
+|---|---|---|
+| Ankunft nicht abgeschnitten (+9 min, +2 km) | GPS-Rauschen im Gebäude (±30–50 m, Phantom-Tempo) zählte als Bewegung | `MovementWindow`: nur anhaltende Bewegung (≥ 4 Fixes, ≤ 20 m Genauigkeit) zählt; Service beendet Auto-Fahrten 45 s nach Ankunft an bekanntem Ort |
+| ~1000 Höhenmeter pro flacher Fahrt | Barometerwert pro GPS-Batch statt pro Fix, Sprünge bis 110 m | Barometer-Ringpuffer mit Zeitstempel, Median ±2 s je Fix; Analyse verwirft unplausible Höhen (> 1,5 m/s vertikal) statt Unsinn anzuzeigen |
+| Kurzer Weg als Radfahrt klassifiziert | Activity-Hinweis überstimmte das Tempoprofil | Nur vom Nutzer gesetzter Modus ist bindend; Gehtempo gewinnt gegen „Radfahren erkannt“ |
+| Mensa → Zuhause nicht mit Uni → Zuhause verglichen | Mensa ist eigener Ort | Ortsgruppen (`places.parentPlaceId`, Schema v3): Routen nutzen die Gruppen-Wurzel; App schlägt nahe Orte (≤ 400 m) zum Zusammenfassen vor |

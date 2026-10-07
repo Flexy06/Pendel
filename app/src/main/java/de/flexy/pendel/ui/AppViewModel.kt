@@ -59,6 +59,13 @@ class AppViewModel(private val c: AppContainer) : ViewModel() {
     fun setMode(id: Long, mode: TransportMode) = viewModelScope.launch { c.trips.setMode(id, mode) }
     fun renameRoute(id: Long, name: String) = viewModelScope.launch { c.trips.renameRoute(id, name) }
     /** Naming a place makes it user data; [kind] HOME/UNI/OTHER drives labels and the default main corridor. */
+    fun setPlaceParent(id: Long, parentId: Long?) = viewModelScope.launch {
+        c.trips.setPlaceParent(id, parentId)
+        _message.value = if (parentId == null) "Ort ist wieder eigenständig" else "Orte zusammengefasst – Routen werden neu berechnet"
+    }
+
+    fun dismissPlaceGroup(childId: Long, parentId: Long) = viewModelScope.launch { c.settings.dismissPlaceGroup("$childId-$parentId") }
+
     fun renamePlace(id: Long, name: String, kind: String) = viewModelScope.launch {
         c.trips.renamePlace(id, name, kind)
         AnalysisWorker.enqueue(c.appContext)

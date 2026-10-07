@@ -287,6 +287,11 @@ data class PlaceEntity(
     val kind: String,
     /** User named/confirmed the place – it is kept even without trips. */
     val userNamed: Boolean = false,
+    /**
+     * Place group (v3, user data): e.g. Mensa → Uni. Routes and corridors use the group's root, so
+     * trips from the Mensa are compared with trips from the Uni.
+     */
+    val parentPlaceId: Long? = null,
 )
 
 /** Book-keeping of analysis runs (which algorithm version produced the current derived data). */

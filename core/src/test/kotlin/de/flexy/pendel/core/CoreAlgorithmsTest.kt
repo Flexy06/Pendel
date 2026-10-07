@@ -225,4 +225,79 @@ class CoreAlgorithmsTest {
         assertEquals(2L, RouteScorer.score(m, Weights.DEFAULT_CUSTOM).first().metrics.routeId)
         assertTrue(RouteScorer.score(m, Weights.forObjective(Objective.BIKE_FRIENDLY)).all { it.bikeUnknown })
     }
+
+    // ------------------------------------------------------------------ v2 regressions (from real data)
+
+    @Test
+    fun indoorNoiseAfterArrivalIsTrimmed() {
+        val ride = SyntheticRides.ride(routes[0], monday0745, 1, 465, seed = 11)
+        val clean = TripAnalyzer.analyze(ride, TransportMode.BICYCLE)!!
+        // 8 minutes of indoor GNSS noise at the destination: poor accuracy, random jumps, Doppler spikes
+        val end = ride.last()
+        val rnd = kotlin.random.Random(5)
+        val noise = (1..240).map { k ->
+            de.flexy.pendel.core.model.TrackPoint(
+                t = end.t + k * 2000L,
+                lat = end.lat + (rnd.nextDouble() - 0.5) * 0.0006,
+                lon = end.lon + (rnd.nextDouble() - 0.5) * 0.0008,
+                accuracy = (18 + rnd.nextDouble() * 30).toFloat(),
+                speed = if (k % 17 == 0) (8 + rnd.nextDouble() * 3).toFloat() else (rnd.nextDouble() * 1.2).toFloat(),
+            )
+        }
+        val noisy = TripAnalyzer.analyze(ride + noise, TransportMode.BICYCLE)!!
+        assertTrue("duration ${noisy.metrics.durationS} vs ${clean.metrics.durationS}", abs(noisy.metrics.durationS - clean.metrics.durationS) < 30)
+        assertTrue("distance ${noisy.metrics.distanceM} vs ${clean.metrics.distanceM}", abs(noisy.metrics.distanceM - clean.metrics.distanceM) < 150)
+    }
+
+    @Test
+    fun walkingPaceOverridesCyclingHint() {
+        val start = LatLon(49.0150, 8.3900)
+        val pts = (0 until 300).map { k ->
+            val walking = (k / 30) % 3 != 2 // walk, walk, stand …
+            val along = (0..k).count { (it / 30) % 3 != 2 } * 2 * 1.3
+            de.flexy.pendel.core.model.TrackPoint(
+                t = 1_000_000L + k * 2000L, lat = start.lat + along / 111_320.0, lon = start.lon,
+                accuracy = 6f, speed = if (walking) 1.3f else 0.1f,
+            )
+        }
+        assertEquals(TransportMode.WALK, TripAnalyzer.analyze(pts, TransportMode.BICYCLE)!!.mode)
+        // a mode the user set explicitly still wins
+        assertEquals(TransportMode.BICYCLE, TripAnalyzer.analyze(pts, TransportMode.BICYCLE, hintIsAuthoritative = true)!!.mode)
+    }
+
+    @Test
+    fun implausibleAltitudeGivesNoElevation() {
+        val ride = SyntheticRides.ride(routes[1], monday0745, 2, 500, seed = 4)
+        val broken = ride.mapIndexed { i, p -> p.copy(altitude = 115.0 + if ((i / 6) % 2 == 0) 0.0 else 40.0) }
+        val a = TripAnalyzer.analyze(broken, TransportMode.BICYCLE)!!
+        assertEquals(null, a.metrics.elevationGainM)
+        val ok = TripAnalyzer.analyze(ride, TransportMode.BICYCLE)!!
+        assertTrue("plausible gain ${ok.metrics.elevationGainM}", (ok.metrics.elevationGainM ?: 999.0) < 60)
+    }
+
+    @Test
+    fun placeGroupsShareRoutes() {
+        val home = de.flexy.pendel.core.routes.PlaceInput(1, 48.99950, 8.47400, 150.0, de.flexy.pendel.core.routes.PlaceKind.HOME, true)
+        val uni = de.flexy.pendel.core.routes.PlaceInput(2, 49.01500, 8.39050, 150.0, de.flexy.pendel.core.routes.PlaceKind.UNI, true)
+        // "Mensa" ~250 m from the uni point, belongs to Uni
+        val mensa = de.flexy.pendel.core.routes.PlaceInput(3, 49.01720, 8.39050, 120.0, de.flexy.pendel.core.routes.PlaceKind.OTHER, true, parentId = 2)
+        val trips = (0 until 4).map { k ->
+            val rev = true
+            val pts = SyntheticRides.ride(routes[1], monday0745 + k * 86_400_000L, 1, 960, seed = 30 + k, reverse = rev)
+            // half of the rides start at the Mensa: prepend a short leg from there
+            val leg = if (k % 2 == 0) (0 until 20).map { j ->
+                de.flexy.pendel.core.model.TrackPoint(pts.first().t - (20 - j) * 2000L, 49.01720 - j * 0.0001, 8.39050, 5f, 5f)
+            } else emptyList()
+            val a = TripAnalyzer.analyze(leg + pts, TransportMode.BICYCLE)!!
+            GlobalAnalysis.TripInput(
+                k + 1L, a.metrics.startTime, 1, 960, 990, a.mode,
+                a.cleanedPoints.first().latLon, a.cleanedPoints.last().latLon, PolylineCodec.decode(a.signature), emptyList(), a.metrics.durationS,
+            )
+        }
+        val out = GlobalAnalysis.run(GlobalAnalysis.Input(trips, listOf(home, uni, mensa), emptyList(), emptyList(), emptyList()))
+        assertEquals(setOf(3L, 2L), trips.map { out.places.startPlace[it.id] }.toSet()) // places themselves stay distinct
+        assertEquals("one route Uni-group → Home", 1, out.routes.size)
+        assertEquals(2L, out.routes.first().key.origin)
+        assertEquals(4, out.routes.first().tripIds.size)
+    }
 }

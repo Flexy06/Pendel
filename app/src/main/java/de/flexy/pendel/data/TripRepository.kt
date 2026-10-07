@@ -76,6 +76,13 @@ class TripRepository(
 
     suspend fun renameRoute(id: Long, name: String) = db.routeDao().rename(id, name.trim())
     suspend fun renamePlace(id: Long, name: String, kind: String) = db.placeDao().rename(id, name.trim(), kind)
+
+    /** Groups a place under another (Mensa → Uni) and re-derives routes. */
+    suspend fun setPlaceParent(id: Long, parentId: Long?) {
+        if (parentId == id) return
+        db.placeDao().setParent(id, parentId)
+        AnalysisWorker.enqueue(context)
+    }
     suspend fun renameIntersection(id: Long, name: String?) = db.intersectionDao().rename(id, name?.trim()?.ifEmpty { null })
 
     // ---------------------------------------------------------------- deletion (privacy)
