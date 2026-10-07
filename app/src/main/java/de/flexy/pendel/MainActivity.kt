@@ -70,6 +70,7 @@ object Dest {
     const val TRIPS = "trips"
     const val SETTINGS = "settings"
     const val PRIVACY = "privacy"
+    const val STATS = "stats"
     const val TRIP = "trip/{id}"
     const val ROUTE = "route/{id}"
     const val INTERSECTION = "intersection/{id}"
@@ -130,6 +131,7 @@ fun PendelRoot(vm: AppViewModel) {
             composable(Dest.TRIPS) { TripsScreen(vm, nav) }
             composable(Dest.SETTINGS) { SettingsScreen(vm, nav) }
             composable(Dest.PRIVACY) { PrivacyScreen(vm, nav) }
+            composable(Dest.STATS) { de.flexy.pendel.ui.stats.StatsScreen(vm, nav) }
             composable(Dest.TRIP, arguments = listOf(navArgument("id") { type = NavType.LongType })) {
                 TripDetailScreen(vm, nav, it.arguments?.getLong("id") ?: 0L)
             }

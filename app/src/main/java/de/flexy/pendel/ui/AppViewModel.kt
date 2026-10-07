@@ -57,6 +57,11 @@ class AppViewModel(private val c: AppContainer) : ViewModel() {
     fun deleteTrip(id: Long) = viewModelScope.launch { c.trips.delete(id) }
     fun setExcluded(id: Long, excluded: Boolean) = viewModelScope.launch { c.trips.setExcluded(id, excluded) }
     fun setMode(id: Long, mode: TransportMode) = viewModelScope.launch { c.trips.setMode(id, mode) }
+    fun splitTrip(id: Long, onDone: () -> Unit = {}) = viewModelScope.launch {
+        val n = c.trips.splitAtLongestStay(id)
+        _message.value = if (n > 1) "In $n Fahrten geteilt – wird neu ausgewertet" else "Kein längerer Aufenthalt gefunden – Fahrt bleibt unverändert"
+        if (n > 1) onDone()
+    }
     fun renameRoute(id: Long, name: String) = viewModelScope.launch { c.trips.renameRoute(id, name) }
     /** Naming a place makes it user data; [kind] HOME/UNI/OTHER drives labels and the default main corridor. */
     fun setPlaceParent(id: Long, parentId: Long?) = viewModelScope.launch {

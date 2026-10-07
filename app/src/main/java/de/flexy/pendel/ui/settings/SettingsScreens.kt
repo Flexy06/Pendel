@@ -200,7 +200,7 @@ fun SettingsScreen(vm: AppViewModel, nav: NavHostController) {
                     HorizontalDivider()
                     Text("Analyse", style = MaterialTheme.typography.titleSmall)
                     Note(
-                        "Algorithmus-Version ${de.flexy.pendel.core.analysis.AnalysisVersion.CURRENT}. " +
+                        "App ${remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?" }} · Algorithmus-Version ${de.flexy.pendel.core.analysis.AnalysisVersion.CURRENT}. " +
                             (lastRun?.let { r -> "Letzter Lauf: ${r.status}" + (r.finishedAt?.let { " · ${de.flexy.pendel.ui.components.Fmt.dateTime(it)}" } ?: "") } ?: "Noch keine Analyse."),
                     )
                     OutlinedButton(onClick = { vm.reanalyze(context) }) { Text("Alles aus Rohdaten neu analysieren") }

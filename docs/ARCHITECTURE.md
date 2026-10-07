@@ -303,3 +303,9 @@ den Rohdaten korrigierbar:
 | Absturz beim Einschalten der Wartezeit-Heatmap | MapLibre-`HeatmapLayer` (Offscreen-Rendering) | Weichgezeichnete Kreise (`CircleLayer` + `circle-blur`), NaN-Schutz für alle Kartenwerte |
 | Abstürze schwer nachvollziehbar | – | `CrashLog`: letzter Stacktrace lokal gespeichert, in den Einstellungen kopierbar |
 
+
+## 13. Version 0.3.2
+
+- **Gesamtstatistik** (`ui/stats/StatsScreen.kt`, erreichbar über die „Insgesamt“-Karte im Dashboard und das Diagramm-Symbol in „Fahrten“): Gesamtdistanz, Fahrzeit, Zeit in Bewegung, Ø-Tempo, Wartezeit, Fahrtage, km pro Woche, Verteilung nach Ziel, Rekorde. Demo-Fahrten zählen nicht mit.
+- **Fahrt manuell teilen**: Fahrtansicht zeigt bei ≥ 5 min Stillstand den Hinweis „Zwei Fahrten in einer Aufzeichnung?“ (auch im ⋮-Menü). Teilt am längsten Aufenthalt (≥ 3 min, lockerer als die Automatik). Gemeinsame Logik in `data/TripSplitting.kt` für Automatik und Handaktion; die alten abgeleiteten Daten der zusammengelegten Fahrt werden dabei verworfen.
+- APK heißt jetzt `pendel-<version>-debug.apk`; App-Version steht in den Einstellungen unter „Daten → Analyse“.

@@ -156,7 +156,7 @@ fun PendelMap(
     LaunchedEffect(style, layers, dark) {
         val s = style ?: return@LaunchedEffect
         val m = map ?: return@LaunchedEffect
-        updateSources(s, layers, dark)
+        runCatching { updateSources(s, layers, dark) }.onFailure { android.util.Log.e("PendelMap", "layer update failed", it) }
         // fit camera once per distinct data set
         val pts = layers.lines.flatMap { it.points } + layers.markers.map { LatLon(it.lat, it.lon) }
         val key = "${pts.size}-${pts.firstOrNull()}-${pts.lastOrNull()}"

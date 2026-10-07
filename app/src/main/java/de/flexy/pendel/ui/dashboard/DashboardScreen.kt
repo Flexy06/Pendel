@@ -213,13 +213,33 @@ fun DashboardScreen(vm: AppViewModel, nav: NavHostController) {
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatTile(
-                        "Diese Woche", "${Fmt.km(kpis.weekDistanceM)} km", Modifier.weight(1f),
+                        "Diese Woche", "${Fmt.km(kpis.weekDistanceM)} km", Modifier.weight(1f).clickable { nav.navigate(Dest.STATS) },
                         sub = Fmt.trips(kpis.weekTrips), icon = Icons.Outlined.Straighten,
                     )
                     StatTile(
                         "Verlorene Wartezeit", Fmt.duration(kpis.weekWaitS), Modifier.weight(1f),
                         sub = "diese Woche, geschätzt", icon = Icons.Outlined.Traffic,
                     )
+                }
+            }
+            item {
+                val real = snap.allTrips.filter { !it.isDemo }
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable { nav.navigate(Dest.STATS) },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Insgesamt", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "${Fmt.km(real.sumOf { it.distanceM })} km · ${Fmt.duration(real.sumOf { it.durationS })}",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(Fmt.trips(real.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text("Statistik ›", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
         }

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.withTransaction
 import de.flexy.pendel.analysis.AnalysisWorker
 import de.flexy.pendel.core.model.TransportMode
+import de.flexy.pendel.core.track.TripSplitter
 import de.flexy.pendel.data.db.ActivityEventEntity
 import de.flexy.pendel.data.db.PendelDatabase
 import de.flexy.pendel.data.db.TrackPointEntity
@@ -72,6 +73,20 @@ class TripRepository(
         db.tripDao().setUserMode(tripId, mode.name)
         db.tripDao().setState(tripId, TripState.PROCESSING.name)
         AnalysisWorker.enqueue(context)
+    }
+
+    /**
+     * User action "In zwei Fahrten teilen": splits at the longest stay inside the recording
+     * (looser thresholds than the automatic split). @return number of resulting trips, 0 if no stay found.
+     */
+    suspend fun splitAtLongestStay(tripId: Long): Int {
+        val trip = db.tripDao().get(tripId) ?: return 0
+        val raw = db.pointDao().forTrip(tripId).map { it.toCore() }
+        val dwell = TripSplitter.findDwells(raw, minDwellS = 3 * 60.0, minTravelM = 200.0).maxByOrNull { it.durationS } ?: return 0
+        val newIds = splitTripAt(db, trip, listOf(dwell.splitT))
+        if (newIds.isEmpty()) return 0
+        AnalysisWorker.enqueue(context)
+        return newIds.size + 1
     }
 
     suspend fun renameRoute(id: Long, name: String) = db.routeDao().rename(id, name.trim())

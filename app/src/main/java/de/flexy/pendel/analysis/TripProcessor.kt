@@ -7,13 +7,13 @@ import de.flexy.pendel.core.geo.PolylineCodec
 import de.flexy.pendel.core.model.StopKind
 import de.flexy.pendel.core.track.TripAnalyzer
 import de.flexy.pendel.core.track.TripSplitter
-import java.util.UUID
 import de.flexy.pendel.data.db.PendelDatabase
 import de.flexy.pendel.data.db.StopEntity
 import de.flexy.pendel.data.db.TripAnalysisEntity
 import de.flexy.pendel.data.db.TripState
 import de.flexy.pendel.data.db.TripTrigger
 import de.flexy.pendel.data.localTimeInfo
+import de.flexy.pendel.data.splitTripAt
 import de.flexy.pendel.data.modeHint
 import de.flexy.pendel.data.settings.SettingsRepository
 import de.flexy.pendel.data.toCore
@@ -39,27 +39,13 @@ class TripProcessor(
         if (trip.state != TripState.RECORDING.name) {
             val dwells = TripSplitter.findDwells(raw)
             if (dwells.isNotEmpty()) {
-                val parts = TripSplitter.split(raw, dwells).filter { it.isNotEmpty() }
-                val newIds = ArrayList<Long>()
-                db.withTransaction {
-                    for (part in parts.drop(1)) {
-                        val from = part.first().t
-                        val to = part.last().t + 1
-                        val id = db.tripDao().insert(
-                            trip.copy(
-                                id = 0, uuid = UUID.randomUUID().toString(), recordedStart = from, recordedEnd = part.last().t,
-                                state = TripState.PROCESSING.name, createdAt = System.currentTimeMillis(),
-                            ),
-                        )
-                        db.pointDao().moveToTrip(tripId, id, from, to)
-                        newIds += id
-                    }
-                    db.tripDao().update(trip.copy(recordedEnd = parts.first().last().t))
+                val newIds = splitTripAt(db, trip, dwells.map { it.splitT })
+                if (newIds.isNotEmpty()) {
+                    Log.i(TAG, "Split trip $tripId at ${dwells.size} stay(s) into ${newIds.size + 1} trips")
+                    for (id in newIds) process(id, allowNetwork)
+                    trip = db.tripDao().get(tripId) ?: return false
+                    raw = db.pointDao().forTrip(tripId).map { it.toCore() }
                 }
-                Log.i(TAG, "Split trip $tripId at ${dwells.size} stay(s) into ${parts.size} trips")
-                for (id in newIds) process(id, allowNetwork)
-                trip = db.tripDao().get(tripId) ?: return false
-                raw = db.pointDao().forTrip(tripId).map { it.toCore() }
             }
         }
         // a mode the user set is authoritative; an activity-recognition hint is only a prior

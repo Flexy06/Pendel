@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.ContentCut
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.MoreVert
@@ -121,7 +123,16 @@ fun TripsScreen(vm: AppViewModel, nav: NavHostController) {
     val grouped = remember(snap.allTrips) {
         snap.allTrips.groupBy { Instant.ofEpochMilli(it.startTime).atZone(zone).toLocalDate() }.toSortedMap(compareByDescending { it })
     }
-    Scaffold(topBar = { TopAppBar(title = { Text("Fahrten") }) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Fahrten") },
+                actions = {
+                    IconButton(onClick = { nav.navigate(Dest.STATS) }) { Icon(Icons.Outlined.BarChart, "Gesamtstatistik") }
+                },
+            )
+        },
+    ) { padding ->
         LazyColumn(
             Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()),
             contentPadding = PaddingValues(16.dp),
@@ -178,6 +189,11 @@ fun TripDetailScreen(vm: AppViewModel, nav: NavHostController, tripId: Long) {
                             onClick = { menu = false; trip?.let { vm.setExcluded(it.id, !it.excluded) } },
                         )
                         DropdownMenuItem(
+                            text = { Text("In zwei Fahrten teilen") },
+                            leadingIcon = { Icon(Icons.Outlined.ContentCut, null) },
+                            onClick = { menu = false; vm.splitTrip(tripId) { nav.popBackStack() } },
+                        )
+                        DropdownMenuItem(
                             text = { Text("Fahrt löschen") },
                             leadingIcon = { Icon(Icons.Outlined.Delete, null) },
                             onClick = { menu = false; confirmDelete = true },
@@ -213,6 +229,29 @@ fun TripDetailScreen(vm: AppViewModel, nav: NavHostController, tripId: Long) {
                     modifier = Modifier.fillMaxWidth().height(260.dp),
                     interactive = false,
                 )
+            }
+            // a long standstill inside one recording = most likely two rides (there and back)
+            val standstill = trip.durationS - trip.movingS
+            if (standstill >= 5 * 60) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("Zwei Fahrten in einer Aufzeichnung?", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Diese Aufzeichnung enthält ${Fmt.duration(standstill)} Stillstand. Teilen macht daraus " +
+                                    "eine Hin- und eine Rückfahrt mit eigenen Zeiten – die GPS-Rohdaten bleiben vollständig erhalten.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            androidx.compose.material3.FilledTonalButton(onClick = { vm.splitTrip(tripId) { nav.popBackStack() } }) {
+                                Text("In zwei Fahrten teilen")
+                            }
+                        }
+                    }
+                }
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {

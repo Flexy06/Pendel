@@ -52,15 +52,28 @@ jobs:
           if-no-files-found: ignore
 
       # Rolling pre-release "latest-debug": the APK can be downloaded directly on the phone.
+      # The old release + tag are deleted first, so the tag points at the new commit and the
+      # release shows the date of this build (updating in place kept the first build's date).
+      - name: Read app version
+        if: github.event_name != 'pull_request'
+        run: echo "APP_VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)" >> "$GITHUB_ENV"
+
+      - name: Remove previous debug release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete latest-debug --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
+
       - name: Publish APK as pre-release
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-debug
-          name: Pendel (Debug-Build)
+          target_commitish: ${{ github.sha }}
+          name: Pendel ${{ env.APP_VERSION }} (Debug-Build)
           prerelease: true
           make_latest: false
           body: |
-            Automatischer Debug-Build von ${{ github.sha }}.
+            Automatischer Debug-Build von ${{ github.sha }} (Version ${{ env.APP_VERSION }}).
             Installieren: APK auf dem Handy öffnen (Installation aus unbekannten Quellen erlauben).
           files: app/build/outputs/apk/debug/*.apk
